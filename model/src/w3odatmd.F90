@@ -762,14 +762,14 @@ CONTAINS
     IDOUT( 1, 8)  = 'Atmospheric momentum'
     IDOUT( 1, 9)  = 'Air density         '
 #ifdef W3_BT4
-    IDOUT( 1, 10)  = 'Sediment diam D50   '
+    IDOUT( 1, 10) = 'Sediment diam D50   '
 #endif
 #ifdef W3_IS2
-    IDOUT( 1, 11)  = 'ice thickness   '
+    IDOUT( 1, 11) = 'ice thickness   '
     IDOUT( 1, 12) = 'Avg. ice floe diam. '
 #endif
 #ifdef W3_SETUP
-    IDOUT( 1, 13)  = 'wave induced setup'
+    IDOUT( 1, 13) = 'wave induced setup'
 #endif
     !
     ! 2) Standard mean wave parameters
@@ -791,22 +791,22 @@ CONTAINS
     IDOUT( 2, 7)  = 'Mean wave dir. a1b1 '
     IDOUT( 2, 8)  = 'Mean dir. spr. a1b1 '
     IDOUT( 2, 9)  = 'Peak direction      '
-    IDOUT( 2, 10)  = 'Infragravity height'
-    IDOUT( 2, 11)  = 'Space-Time Max E   '
-    IDOUT( 2, 12)  = 'Space-Time Max Std '
-    IDOUT( 2, 13)  = 'Space-Time Hmax    '
-    IDOUT( 2, 14)  = 'Spc-Time Hmax^crest'
-    IDOUT( 2, 15)  = 'STD Space-Time Hmax'
-    IDOUT( 2, 16)  = 'STD ST Hmax^crest  '
-    IDOUT( 2, 17)  = 'Dominant wave bT   '
-    IDOUT( 2, 18)  = 'Peak prd. (from fp)'
-    IDOUT( 2, 19)  = 'Mean wave number   '
+    IDOUT( 2, 10) = 'Infragravity height'
+    IDOUT( 2, 11) = 'Space-Time Max E   '
+    IDOUT( 2, 12) = 'Space-Time Max Std '
+    IDOUT( 2, 13) = 'Space-Time Hmax    '
+    IDOUT( 2, 14) = 'Spc-Time Hmax^crest'
+    IDOUT( 2, 15) = 'STD Space-Time Hmax'
+    IDOUT( 2, 16) = 'STD ST Hmax^crest  '
+    IDOUT( 2, 17) = 'Dominant wave bT   '
+    IDOUT( 2, 18) = 'Peak prd. (from fp)'
+    IDOUT( 2, 19) = 'Mean wave number   '
 #ifdef W3_OASOCM
     IDOUT( 2, 20) = 'Mean wave dir. norot'
 #endif
 #ifdef W3_COAWST_MODEL
-    IDOUT( 2, 21)  = 'Peak wave length'
-    IDOUT( 2, 22)  = 'Percent wave breaking'
+    IDOUT( 2, 21) = 'Peak wave length'
+    IDOUT( 2, 22) = 'Percent wave breaking'
 #endif
     !      IDOUT( 2,10)  = 'Mean wave dir. a2b2'
     !      IDOUT( 2,11)  = 'Mean dir. spr. a2b2'

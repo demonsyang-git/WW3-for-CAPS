@@ -69,7 +69,8 @@ MODULE W3IORSMD
   !/
   !/ Private parameter statements (ID strings)
   !/
-  CHARACTER(LEN=10), PARAMETER, PRIVATE :: VERINI = '2021-05-28'
+  !/ cyy note: VERINI is updated for CAPS restart changes
+  CHARACTER(LEN=10), PARAMETER, PRIVATE :: VERINI = '2026-10-13' 
   CHARACTER(LEN=26), PARAMETER, PRIVATE ::                        &
        IDSTR = 'WAVEWATCH III RESTART FILE'
   !/
@@ -298,6 +299,7 @@ CONTAINS
          PHIOC, TUSX, TUSY, USSX, USSY, TAUICE,      &
          UBA, UBD, PHIBBL, TAUBBL, TAUOCX, TAUOCY,   &
          WNMEAN
+    USE W3ADATMD, ONLY: WN, CG !! cyy added for restart and these are not COAWST-specific restart
 #ifdef W3_CURSP
     USE W3ADATMD, ONLY: CXTH, CYTH
 #endif
@@ -305,7 +307,7 @@ CONTAINS
     USE W3ADATMD, ONLY: PHIBRKX, PHIBRKY
     USE W3ADATMD, ONLY: PHICAPX, PHICAPY
     USE W3ADATMD, ONLY: TAUOSX, TAUOSY
-    USE W3ADATMD, ONLY: TAUICE, QB !! cyy added
+    USE W3ADATMD, ONLY: QB     !! cyy added
 #endif
     !/
     USE W3GDATMD, ONLY: NX, NY, NSEA, NSEAL, NSPEC, MAPSTA, MAPST2, &
@@ -363,8 +365,10 @@ CONTAINS
     INTEGER                 :: IGRD, I, J, LRECL, NSIZE, IERR,      &
          NSEAT, MSPEC, TTIME(2), ISEA, JSEA,  &
          NREC, NPART, IPART, IX, IY, IXL, IP, &
-         NPRTX2, NPRTY2, IYL, ITMP
-#ifdef W3_CURSP
+         NPRTX2, NPRTY2, IYL, ITMP,           &
+         IK, ISEA0, ISEA1 ! cyy added for WN/CG
+#ifdef W3_CURSP__
+    ! cyy note: deactivate W3_CURSP here for avoiding duplicated statement of IK
     INTEGER                 :: IK
 #endif
     INTEGER, ALLOCATABLE    :: MAPTMP(:,:)
@@ -372,7 +376,7 @@ CONTAINS
     INTEGER, SAVE           :: IENT = 0
 #endif
 #ifdef W3_MPI
-    INTEGER                 :: IERR_MPI, IH, IB, ISEA0, ISEAN, &
+    INTEGER                 :: IERR_MPI, IH, IB, ISEAN, & ! cyy note: ISEA0 moved out of W3_MPI guard
          NRQ, NSEAL_MIN
 #endif
     INTEGER(KIND=8)         :: RPOS
@@ -408,20 +412,6 @@ CONTAINS
 
     IOSFLG = IOSTYP .GT. 0
 
-#ifdef W3_COAWST_MODEL    
-    ! cyy note: perform the zero initialization here
-    !           restart part is pending
-    PHIBRKX = 0.
-    PHIBRKY = 0.
-    QB      = 0.
-    PHICAPX = 0.
-    PHICAPY = 0.
-!   TAUBRKX = 0.
-!   TAUBRKY = 0.
-    TAUOSX = 0.
-    TAUOSY = 0.
-    TAUICE = 0.    
-#endif
     !
     ! test parameter list input ------------------------------------------ *
     !
@@ -477,14 +467,14 @@ CONTAINS
     WRITEBUFF(:) = 0.
     !
     !     Allocate memory to receive fields needed for coupling
+#ifdef W3_COAWST_MODEL
+    ! cyy note: following the upstream COAWST to force OARST here
+    OARST = .TRUE.
+#endif
     IF (OARST) THEN
       ALLOCATE(TMP(NSEA))
       ALLOCATE(TMP2(NSEA))
     ENDIF
-# ifdef W3_COAWST_MODEL
-      ALLOCATE(TMP(NSEA))
-      ALLOCATE(TMP2(NSEA))
-# endif
     !
     ! open file ---------------------------------------------------------- *
     !
@@ -519,20 +509,32 @@ CONTAINS
 
     IF(NDST.EQ.NDSR)THEN
       IF ( IAPROC .EQ. NAPERR )                                    &
-           WRITE(NDSE,'(A,I8)')'UNIT NUMBERS OF RESTART FILE AND '&
+           WRITE(NDSE,'(A,I8)')'UNIT NUMBERS OF RESTART FILE AND ' &
            //'TEST OUTPUT ARE THE SAME : ',NDST
       CALL EXTCDE ( 15 )
     ENDIF
 
     IF ( WRITE ) THEN
-      IF ( .NOT.IOSFLG .OR. IAPROC.EQ.NAPRST )                    &
-           OPEN (NDSR,FILE=FNMPRE(:J)//FNAME,form='UNFORMATTED', convert=file_endian,       &
+      IF ( .NOT.IOSFLG .OR. IAPROC.EQ.NAPRST )                     &
+           OPEN (NDSR,FILE=FNMPRE(:J)//FNAME,form='UNFORMATTED', convert=file_endian,  &
            ACCESS='STREAM',ERR=800,IOSTAT=IERR)
     ELSE
       OPEN (NDSR,FILE=FNMPRE(:J)//FNAME,form='UNFORMATTED', convert=file_endian,       &
-           ACCESS='STREAM',ERR=800,IOSTAT=IERR,                  &
+           ACCESS='STREAM',ERR=800,IOSTAT=IERR,                    &
            STATUS='OLD',ACTION='READ')
     END IF
+#ifdef W3_COAWST_MODEL
+    ! cyy note: follow the upstream COAWST to force FLOGRR here.
+    !OARST = .TRUE.       ! already forced at L471
+    FLOGRR(:,:) = .FALSE. ! overwrite any pre-assigned status in ww3_shel
+                          ! it is hard-coded CAPS bitwase restart strategy
+    FLOGRR(2,22) = .TRUE. ! QB
+    FLOGRR(6,10) = .TRUE. ! TAUICE
+    FLOGRR(6,14) = .TRUE. ! TAUOSX/Y
+    FLOGRR(6,15) = .TRUE. ! PHIBRKX/Y
+    FLOGRR(6,16) = .TRUE. ! PHICAPX/Y
+    FLOGRR(7, 4) = .TRUE. ! PHIBBL
+#endif
     !
     ! test info ---------------------------------------------------------- *
     !
@@ -960,122 +962,39 @@ CONTAINS
                  (FPIS(ISEA),ISEA=1+(IPART-1)*NSIZE,                    &
                  MIN(NSEA,IPART*NSIZE))
           END DO
-
-#ifdef W3_COAWST_MODEL
-# ifdef W3_MPI
-          CALL W3XETA ( IGRD, NDSE, NDST )
-# endif
-!
-!  Write CX/Y into rst file
-!
-#  ifdef W3_CURSP
-          DO IK=1,NK
-            DO IPART=1,NPART
-              NREC  = NREC + 1
-              RPOS  = 1_8 + LRECL*(NREC-1_8)
+! cyy note: adding WN/CG writing section
+          DO IK=0,NK+1
+            IPART=1
+            DO
+              ISEA0 = (IPART-1)*NSIZE
+              IF (ISEA0 > NSEA) EXIT
+              ISEA1 = MIN(NSEA,ISEA0+NSIZE-1)
+              NREC = NREC+1
+              RPOS = 1_8 + LRECL*(NREC-1_8)
               WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR) WRITEBUFF
-              WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR)                &
-                   (CXTH(ISEA,IK),ISEA=1+(IPART-1)*NSIZE,              &
-                   MIN(NSEA,IPART*NSIZE))
-            END DO
-            DO IPART=1,NPART
-             NREC  = NREC + 1
-             RPOS  = 1_8 + LRECL*(NREC-1_8)
-             WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR) WRITEBUFF
-             WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR)                   &
-                  (CYTH(ISEA,IK),ISEA=1+(IPART-1)*NSIZE,                 &
-                  MIN(NSEA,IPART*NSIZE))
+              WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR) &
+                   (WN(IK,ISEA),ISEA=ISEA0,ISEA1)
+              IPART=IPART+1
             END DO
           END DO
-#  else
-          DO IPART=1,NPART
-            NREC  = NREC + 1
-            RPOS  = 1_8 + LRECL*(NREC-1_8)
-            WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR) WRITEBUFF
-            WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR)                   &
-                 (CX(ISEA),ISEA=1+(IPART-1)*NSIZE,                      &
-                 MIN(NSEA,IPART*NSIZE))
-          END DO
-          DO IPART=1,NPART
-           NREC  = NREC + 1
-           RPOS  = 1_8 + LRECL*(NREC-1_8)
-           WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR) WRITEBUFF
-           WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR)                   &
-                (CY(ISEA),ISEA=1+(IPART-1)*NSIZE,                      &
-                MIN(NSEA,IPART*NSIZE))
-          END DO
-#  endif
-!
-!  Write TAUOSX/Y into rst file
-!
-        DO IPART=1,NPART
-          NREC  = NREC + 1
-          RPOS  = 1_8 + LRECL*(NREC-1_8)
-          WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR) WRITEBUFF
-          WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR)                   &
-               (TAUOSX(ISEA),ISEA=1+(IPART-1)*NSIZE,               &
-               MIN(NSEA,IPART*NSIZE))
-        END DO
-        DO IPART=1,NPART
-          NREC  = NREC + 1
-          RPOS  = 1_8 + LRECL*(NREC-1_8)
-          WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR) WRITEBUFF
-          WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR)                   &
-               (TAUOSY(ISEA),ISEA=1+(IPART-1)*NSIZE,               &
-               MIN(NSEA,IPART*NSIZE))
-        END DO
-!
-!  Write PHIBRKX/Y into rst file
-!
-          DO IPART=1,NPART
-            NREC  = NREC + 1
-            RPOS  = 1_8 + LRECL*(NREC-1_8)
-            WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR) WRITEBUFF
-            WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR)                   &
-                 (PHIBRKX(ISEA),ISEA=1+(IPART-1)*NSIZE,                 &
-                 MIN(NSEA,IPART*NSIZE))
-          END DO
-          DO IPART=1,NPART
-            NREC  = NREC + 1
-            RPOS  = 1_8 + LRECL*(NREC-1_8)
-            WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR) WRITEBUFF
-            WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR)                   &
-                 (PHIBRKY(ISEA),ISEA=1+(IPART-1)*NSIZE,                 &
-                   MIN(NSEA,IPART*NSIZE))
+          DO IK=0,NK+1
+            IPART=1
+            DO
+              ISEA0 = (IPART-1)*NSIZE
+              IF (ISEA0 > NSEA) EXIT
+              ISEA1 = MIN(NSEA,ISEA0+NSIZE-1)
+              NREC = NREC+1
+              RPOS = 1_8 + LRECL*(NREC-1_8)
+              WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR) WRITEBUFF
+              WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR) &
+                   (CG(IK,ISEA),ISEA=ISEA0,ISEA1)
+              IPART=IPART+1
+            END DO
           END DO
 !
-!  Write PHICAPX/Y into rst file
-!
-          DO IPART=1,NPART
-            NREC  = NREC + 1
-            RPOS  = 1_8 + LRECL*(NREC-1_8)
-            WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR) WRITEBUFF
-            WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR)                   &
-                 (PHICAPX(ISEA),ISEA=1+(IPART-1)*NSIZE,                &
-                 MIN(NSEA,IPART*NSIZE))
-          END DO
-          DO IPART=1,NPART
-            NREC  = NREC + 1
-            RPOS  = 1_8 + LRECL*(NREC-1_8)
-            WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR) WRITEBUFF
-            WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR)                   &
-                 (PHICAPY(ISEA),ISEA=1+(IPART-1)*NSIZE,                &
-                   MIN(NSEA,IPART*NSIZE))
-          END DO
-!
-!  Write PHIBBL into rst file
-!
-          DO IPART=1,NPART
-            NREC  = NREC + 1
-            RPOS  = 1_8 + LRECL*(NREC-1_8)
-            WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR) WRITEBUFF
-            WRITE (NDSR,POS=RPOS,ERR=803,IOSTAT=IERR)                   &
-                 (PHIBBL(ISEA),ISEA=1+(IPART-1)*NSIZE,                  &
-                 MIN(NSEA,IPART*NSIZE))
-          END DO
-# ifdef W3_MPI
-          CALL W3SETA ( IGRD, NDSE, NDST )
-# endif
+#ifdef W3_COAWST_MODEL__
+! cyy note: removing original COAWST hard-coded writing section
+!           using OARST section for additional restart I/O
 #endif
           IF (OARST) THEN
 #ifdef W3_MPI
@@ -1126,6 +1045,7 @@ CONTAINS
               WRITE(NDSR,ERR=803,IOSTAT=IERR) USSX(1:NSEA)
               WRITE(NDSR,ERR=803,IOSTAT=IERR) USSY(1:NSEA)
             ENDIF
+            ! cyy note: TAUICE forced
             IF ( FLOGRR(6,10) ) THEN
               WRITE(NDSR,ERR=803,IOSTAT=IERR) TAUICE(1:NSEA,1)
               WRITE(NDSR,ERR=803,IOSTAT=IERR) TAUICE(1:NSEA,2)
@@ -1138,12 +1058,30 @@ CONTAINS
               WRITE(NDSR,ERR=803,IOSTAT=IERR) UBA(1:NSEA)
               WRITE(NDSR,ERR=803,IOSTAT=IERR) UBD(1:NSEA)
             ENDIF
+            ! cyy note: PHIBBL forced
             IF ( FLOGRR(7,4) )                                  &
                  WRITE(NDSR,ERR=803,IOSTAT=IERR) PHIBBL(1:NSEA)
             IF ( FLOGRR(7,5) ) THEN
               WRITE(NDSR,ERR=803,IOSTAT=IERR) TAUBBL(1:NSEA,1)
               WRITE(NDSR,ERR=803,IOSTAT=IERR) TAUBBL(1:NSEA,2)
             ENDIF
+#ifdef W3_COAWST_MODEL
+! cyy note: OARST writing section for COAWST additional variables
+            IF ( FLOGRR(2,22) )                                &
+                 WRITE(NDSR,ERR=803,IOSTAT=IERR) QB(1:NSEA)
+            IF ( FLOGRR(6,14) ) THEN
+              WRITE(NDSR,ERR=803,IOSTAT=IERR) TAUOSX(1:NSEA)
+              WRITE(NDSR,ERR=803,IOSTAT=IERR) TAUOSY(1:NSEA)
+            ENDIF
+            IF ( FLOGRR(6,15) ) THEN
+              WRITE(NDSR,ERR=803,IOSTAT=IERR) PHIBRKX(1:NSEA)
+              WRITE(NDSR,ERR=803,IOSTAT=IERR) PHIBRKY(1:NSEA)
+            ENDIF
+            IF ( FLOGRR(6,16) ) THEN
+              WRITE(NDSR,ERR=803,IOSTAT=IERR) PHICAPX(1:NSEA)
+              WRITE(NDSR,ERR=803,IOSTAT=IERR) PHICAPY(1:NSEA)
+            ENDIF
+#endif
             !
 #ifdef W3_MPI
             CALL W3SETA ( IGRD, NDSE, NDST )
@@ -1252,139 +1190,37 @@ CONTAINS
                (FPIS(ISEA),ISEA=1+(IPART-1)*NSIZE,             &
                MIN(NSEA,IPART*NSIZE))
         END DO
-#ifdef W3_COAWST_MODEL
-!
-!  Read CX/Y from rst file
-!
-# ifdef W3_CURSP
-        DO IK=1,NK
-          DO IPART=1,NPART
-            NREC  = NREC + 1
-            RPOS  = 1_8 + LRECL*(NREC-1_8)
-            READ (NDSR,POS=RPOS,ERR=802,IOSTAT=IERR)                      &
-                 (CXTH(ISEA,IK),ISEA=1+(IPART-1)*NSIZE,                   &
-                 MIN(NSEA,IPART*NSIZE))
-          END DO
-          DO IPART=1,NPART
-            NREC  = NREC + 1
-            RPOS  = 1_8 + LRECL*(NREC-1_8)
-            READ (NDSR,POS=RPOS,ERR=802,IOSTAT=IERR)                      &
-                 (CYTH(ISEA,IK),ISEA=1+(IPART-1)*NSIZE,                   &
-                 MIN(NSEA,IPART*NSIZE))
+! cyy note: adding WN/CG reading section
+        DO IK=0,NK+1
+          IPART=1
+          DO
+            ISEA0 = (IPART-1)*NSIZE
+            IF (ISEA0 > NSEA) EXIT
+            ISEA1 = MIN(NSEA,ISEA0+NSIZE-1)
+            NREC = NREC+1
+            RPOS = 1_8 + LRECL*(NREC-1_8)
+            READ (NDSR,POS=RPOS,ERR=802,IOSTAT=IERR) &
+                 (WN(IK,ISEA),ISEA=ISEA0,ISEA1)
+            IPART=IPART+1
           END DO
         END DO
-# else
-        DO IPART=1,NPART
-          NREC  = NREC + 1
-          RPOS  = 1_8 + LRECL*(NREC-1_8)
-          READ (NDSR,POS=RPOS,ERR=802,IOSTAT=IERR)                      &
-               (CX(ISEA),ISEA=1+(IPART-1)*NSIZE,                        &
-               MIN(NSEA,IPART*NSIZE))
+        DO IK=0,NK+1
+          IPART=1
+          DO
+            ISEA0 = (IPART-1)*NSIZE
+            IF (ISEA0 > NSEA) EXIT
+            ISEA1 = MIN(NSEA,ISEA0+NSIZE-1)
+            NREC = NREC+1
+            RPOS = 1_8 + LRECL*(NREC-1_8)
+            READ (NDSR,POS=RPOS,ERR=802,IOSTAT=IERR) &
+                 (CG(IK,ISEA),ISEA=ISEA0,ISEA1)
+            IPART=IPART+1
+          END DO
         END DO
-        DO IPART=1,NPART
-          NREC  = NREC + 1
-          RPOS  = 1_8 + LRECL*(NREC-1_8)
-          READ (NDSR,POS=RPOS,ERR=802,IOSTAT=IERR)                      &
-               (CY(ISEA),ISEA=1+(IPART-1)*NSIZE,                        &
-               MIN(NSEA,IPART*NSIZE))
-        END DO
-# endif
 !
-!  Read TAUOCX/Y from rst file
-!
-        DO IPART=1,NPART
-          NREC  = NREC + 1
-          RPOS  = 1_8 + LRECL*(NREC-1_8)
-          READ (NDSR,POS=RPOS,ERR=802,IOSTAT=IERR)                      &
-               (TMP(ISEA),ISEA=1+(IPART-1)*NSIZE,                    &
-               MIN(NSEA,IPART*NSIZE))
-        END DO
-        DO IPART=1,NPART
-          NREC  = NREC + 1
-          RPOS  = 1_8 + LRECL*(NREC-1_8)
-          READ (NDSR,POS=RPOS,ERR=802,IOSTAT=IERR)                      &
-               (TMP2(ISEA),ISEA=1+(IPART-1)*NSIZE,                    &
-               MIN(NSEA,IPART*NSIZE))
-        END DO
-        TAUOSX = 0.
-        TAUOSY = 0.
-        DO I=1, NSEALM
-          J = IAPROC + (I-1)*NAPROC
-          IF (J .LE. NSEA) THEN
-            TAUOSX(I) = TMP(J)
-            TAUOSY(I) = TMP2(J)
-          ENDIF
-        ENDDO
-!
-!  Read PHIBRKX/Y from rst file
-!
-        DO IPART=1,NPART
-          NREC  = NREC + 1
-          RPOS  = 1_8 + LRECL*(NREC-1_8)
-          READ (NDSR,POS=RPOS,ERR=802,IOSTAT=IERR)                      &
-               (TMP(ISEA),ISEA=1+(IPART-1)*NSIZE,                   &
-               MIN(NSEA,IPART*NSIZE))
-        END DO
-        DO IPART=1,NPART
-          NREC  = NREC + 1
-          RPOS  = 1_8 + LRECL*(NREC-1_8)
-          READ (NDSR,POS=RPOS,ERR=802,IOSTAT=IERR)                      &
-               (TMP2(ISEA),ISEA=1+(IPART-1)*NSIZE,                   &
-               MIN(NSEA,IPART*NSIZE))
-        END DO
-        PHIBRKX = 0.
-        PHIBRKY = 0.
-        DO I=1, NSEALM
-          J = IAPROC + (I-1)*NAPROC
-          IF (J .LE. NSEA) THEN
-            PHIBRKX(I) = TMP(J)
-            PHIBRKY(I) = TMP2(J)
-          ENDIF
-        ENDDO
-!
-!  Read PHICAPX/Y from rst file
-!
-        DO IPART=1,NPART
-          NREC  = NREC + 1
-          RPOS  = 1_8 + LRECL*(NREC-1_8)
-          READ (NDSR,POS=RPOS,ERR=802,IOSTAT=IERR)                      &
-               (TMP(ISEA),ISEA=1+(IPART-1)*NSIZE,                   &
-               MIN(NSEA,IPART*NSIZE))
-        END DO
-        DO IPART=1,NPART
-          NREC  = NREC + 1
-          RPOS  = 1_8 + LRECL*(NREC-1_8)
-          READ (NDSR,POS=RPOS,ERR=802,IOSTAT=IERR)                      &
-               (TMP2(ISEA),ISEA=1+(IPART-1)*NSIZE,                   &
-               MIN(NSEA,IPART*NSIZE))
-        END DO
-        PHICAPX = 0.
-        PHICAPY = 0.
-        DO I=1, NSEALM
-          J = IAPROC + (I-1)*NAPROC
-          IF (J .LE. NSEA) THEN
-            PHICAPX(I) = TMP(J)
-            PHICAPY(I) = TMP2(J)
-          ENDIF
-        ENDDO
-!
-!  Read PHIBBL from rst file
-!
-        DO IPART=1,NPART
-          NREC  = NREC + 1
-          RPOS  = 1_8 + LRECL*(NREC-1_8)
-          READ (NDSR,POS=RPOS,ERR=802,IOSTAT=IERR)                      &
-               (TMP(ISEA),ISEA=1+(IPART-1)*NSIZE,                    &
-               MIN(NSEA,IPART*NSIZE))
-        END DO
-        PHIBBL = 0.
-        DO I=1, NSEALM
-          J = IAPROC + (I-1)*NAPROC
-          IF (J .LE. NSEA) THEN
-            PHIBBL(I) = TMP(J)
-          ENDIF
-        ENDDO
-
+#ifdef W3_COAWST_MODEL__
+! cyy note: removing original COAWST hard-coded reading section
+!           using OARST section for additional restart I/O
 #endif
         IF (OARST) THEN
           IF ( FLOGOA(1,2) ) THEN
@@ -1515,6 +1351,7 @@ CONTAINS
               ENDIF
             ENDDO
           ENDIF
+          ! cyy note: TAUICE
           IF ( FLOGOA(6,10) ) THEN
             READ (NDSR,ERR=802,IOSTAT=IERR) TMP(1:NSEA)
             READ (NDSR,ERR=802,IOSTAT=IERR) TMP2(1:NSEA)
@@ -1548,6 +1385,7 @@ CONTAINS
               ENDIF
             ENDDO
           ENDIF
+          ! cyy note: PHIBBL
           IF ( FLOGOA(7,4) ) THEN
             READ (NDSR,ERR=802,IOSTAT=IERR) TMP(1:NSEA)
             DO I=1, NSEALM
@@ -1566,6 +1404,49 @@ CONTAINS
               ENDIF
             ENDDO
           ENDIF
+#ifdef W3_COAWST_MODEL
+! cyy note: OARST reading section for COAWST additional variables
+          IF ( FLOGOA(2,22) ) THEN
+            READ (NDSR,ERR=802,IOSTAT=IERR) TMP(1:NSEA)
+            DO I=1, NSEALM
+              J = IAPROC + (I-1)*NAPROC
+              IF (J .LE. NSEA) QB(I) = TMP(J)
+            ENDDO
+          ENDIF
+          IF ( FLOGOA(6,14) ) THEN
+            READ (NDSR,ERR=802,IOSTAT=IERR) TMP(1:NSEA)
+            READ (NDSR,ERR=802,IOSTAT=IERR) TMP2(1:NSEA)
+            DO I=1, NSEALM
+              J = IAPROC + (I-1)*NAPROC
+              IF (J .LE. NSEA) THEN
+                TAUOSX(I) = TMP(J)
+                TAUOSY(I) = TMP2(J)
+              ENDIF
+            ENDDO
+          ENDIF
+          IF ( FLOGOA(6,15) ) THEN
+            READ (NDSR,ERR=802,IOSTAT=IERR) TMP(1:NSEA)
+            READ (NDSR,ERR=802,IOSTAT=IERR) TMP2(1:NSEA)
+            DO I=1, NSEALM
+              J = IAPROC + (I-1)*NAPROC
+              IF (J .LE. NSEA) THEN
+                PHIBRKX(I) = TMP(J)
+                PHIBRKY(I) = TMP2(J)
+              ENDIF
+            ENDDO
+          ENDIF
+          IF ( FLOGOA(6,16) ) THEN
+            READ (NDSR,ERR=802,IOSTAT=IERR) TMP(1:NSEA)
+            READ (NDSR,ERR=802,IOSTAT=IERR) TMP2(1:NSEA)
+            DO I=1, NSEALM
+              J = IAPROC + (I-1)*NAPROC
+              IF (J .LE. NSEA) THEN
+                PHICAPX(I) = TMP(J)
+                PHICAPY(I) = TMP2(J)
+              ENDIF
+            ENDDO
+          ENDIF
+#endif          
         ENDIF
 #ifdef W3_T
         WRITE (NDST,9007)
@@ -1590,7 +1471,7 @@ CONTAINS
         FPIS    =  DUMFPI
 
         ! Initialize coupled fields if no restart is present
-        IF (OARST) THEN
+        IF (OARST) THEN ! cyy note: already forced
           CX      = 0.
           CY      = 0.
           ICEF    = 0.
@@ -1620,6 +1501,16 @@ CONTAINS
           UBD     = 0.
           PHIBBL  = 0.
           TAUBBL  = 0.
+#ifdef W3_COAWST_MODEL
+          ! cyy note: perform the zero initialization for non-restart case
+          QB      = 0.
+          PHICAPX = 0.
+          PHICAPY = 0.
+          PHIBRKX = 0.
+          PHIBRKY = 0.
+          TAUOSX = 0.
+          TAUOSY = 0.
+#endif
         ENDIF
 #ifdef W3_T
         WRITE (NDST,9008)

@@ -514,7 +514,9 @@ CONTAINS
 #ifdef W3_REF1
     USE W3GDATMD, ONLY: IOBP, IOBPD, IOBDP, GTYPE, UNGTYPE, REFPARS
 #endif
-#ifdef W3_COAWST_MODEL
+#ifdef W3_COAWST_MODEL__
+    ! cyy note: we do not need RSTYPE for our coupling sequence in W3SRCE
+    !           change W3_COAWST_MODEL -> W3_COAWST_MODEL__
     USE W3GDATMD, ONLY: RSTYPE
 #endif
     USE W3WDATMD, ONLY: TIME
@@ -1032,9 +1034,12 @@ CONTAINS
     TAUOCX = 0.
     TAUOCY = 0.
     WNMEAN = 0.
-    ! cyy note: We do not follow the original COAWST workflow.
-    !           The CPP guard, W3_COAWST_MODEL, is disabled.
-    !           Adding zero initialization outside of CPP guard.
+#ifdef W3_COAWST_MODEL
+    ! cyy note: We have the updated coupling sequence that the first COAWST_CPL call is before W3WAVE/W3SRCE
+    !           then, we do not need to skip here for restart (RSTYPE=2) 
+    !           as long as these variables are written in and read from restart.ww3
+    !  if a 'HOT' rst, then dont overwrite these vals for first time step.
+    !IF (RSTYPE.NE.2) THEN
     PHIBRKX = 0.
     PHIBRKY = 0.
     QB      = 0.
@@ -1044,19 +1049,7 @@ CONTAINS
 !   TAUBRKY = 0.
     TAUOSX = 0.
     TAUOSY = 0.
-#ifdef W3_COAWST_MODEL__
-    !  if a 'HOT' rst, then dont overwrite these vals for first time step.
-    IF (RSTYPE.NE.2) THEN
-      PHIBRKX = 0.
-      PHIBRKY = 0.
-      QB      = 0.
-      PHICAPX = 0.
-      PHICAPY = 0.
-!     TAUBRKX = 0.
-!     TAUBRKY = 0.
-      TAUOSX = 0.
-      TAUOSY = 0.
-    END IF
+    !END IF
 #endif
     !
     ! TIME is updated in W3WAVEMD prior to the call of W3SCRE, we should
@@ -1895,19 +1888,22 @@ CONTAINS
 #endif
         END DO
 #ifdef W3_COAWST_MODEL
-        IF (RSTYPE.NE.2) THEN
+! cyy note: We have the updated coupling sequence that the first COAWST_CPL call is before W3WAVE/W3SRCE
+!           then, we do not need to skip here for restart (RSTYPE=2)
+!           as long as these variables are written in and read from restart.ww3
+        !IF (RSTYPE.NE.2) THEN
 !  if a 'HOT' rst, then dont overwrite these vals for first time step.
 # ifdef W3_DB1
 !  Here we compute breaking stress in W/m2
-          PHIBRKX = PHIBRKX + A1BAND
-          PHIBRKY = PHIBRKY + B1BAND
+        PHIBRKX = PHIBRKX + A1BAND
+        PHIBRKY = PHIBRKY + B1BAND
 !  Here we compute breaking stress in N/m2
-!         TAUBRKX=TAUBRKX + A1BAND * WN1(IK)/SIG(IK)
-!         TAUBRKY=TAUBRKY + B1BAND * WN1(IK)/SIG(IK)
+!       TAUBRKX=TAUBRKX + A1BAND * WN1(IK)/SIG(IK)
+!       TAUBRKY=TAUBRKY + B1BAND * WN1(IK)/SIG(IK)
 # endif
-          PHICAPX = PHICAPX + A2BAND
-          PHICAPY = PHICAPY + B2BAND
-        END IF
+        PHICAPX = PHICAPX + A2BAND
+        PHICAPY = PHICAPY + B2BAND
+        !END IF
 #endif
       END DO
       WHITECAP(3)=4.*SQRT(WHITECAP(3))
@@ -2218,11 +2214,14 @@ CONTAINS
     TAUOCX=DAIR*COEF*COEF*USTAR*USTAR*COS(USTDIR) + DWAT*(TAUOX-TAUWIX)
     TAUOCY=DAIR*COEF*COEF*USTAR*USTAR*SIN(USTDIR) + DWAT*(TAUOY-TAUWIY)
 #ifdef W3_COAWST_MODEL
-    IF (RSTYPE.NE.2) THEN
+! cyy note: We have the updated coupling sequence that the first COAWST_CPL call is before W3WAVE/W3SRCE
+!           then, we do not need to skip here for restart (RSTYPE=2)
+!           as long as these variables are written in and read from restart.ww3
+    !IF (RSTYPE.NE.2) THEN
 !     if a 'HOT' rst, then dont overwrite these vals for first time step.
-      TAUOSX=DAIR*COEF*COEF*USTAR*USTAR*COS(USTDIR) + DWAT*(TAUOX3-TAUWIX)
-      TAUOSY=DAIR*COEF*COEF*USTAR*USTAR*SIN(USTDIR) + DWAT*(TAUOY3-TAUWIY)
-    ENDIF
+    TAUOSX=DAIR*COEF*COEF*USTAR*USTAR*COS(USTDIR) + DWAT*(TAUOX3-TAUWIX)
+    TAUOSY=DAIR*COEF*COEF*USTAR*USTAR*SIN(USTDIR) + DWAT*(TAUOY3-TAUWIY)
+    !ENDIF
 #endif
     !
     ! Transformation in wave energy flux in W/m^2=kg / s^3
@@ -2232,12 +2231,15 @@ CONTAINS
     PHINL =DWAT*GRAV*PHINL *oDTG
     PHIBBL=DWAT*GRAV*PHIBBL*oDTG
 #ifdef W3_COAWST_MODEL
-    IF (RSTYPE.NE.2) THEN
-      PHIBRKX=DWAT*GRAV*PHIBRKX*oDTG
-      PHIBRKY=DWAT*GRAV*PHIBRKY*oDTG
-      PHICAPX=DWAT*GRAV*PHICAPX*oDTG
-      PHICAPY=DWAT*GRAV*PHICAPY*oDTG
-    END IF
+! cyy note: We have the updated coupling sequence that the first COAWST_CPL call is before W3WAVE/W3SRCE
+!           then, we do not need to skip here for restart (RSTYPE=2)
+!           as long as these variables are written in and read from restart.ww3
+    !IF (RSTYPE.NE.2) THEN
+    PHIBRKX=DWAT*GRAV*PHIBRKX*oDTG
+    PHIBRKY=DWAT*GRAV*PHIBRKY*oDTG
+    PHICAPX=DWAT*GRAV*PHICAPX*oDTG
+    PHICAPY=DWAT*GRAV*PHICAPY*oDTG
+    !END IF
 #endif
     !
     ! 10.1  Adds ice scattering and dissipation: implicit integration---------------- *

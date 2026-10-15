@@ -2475,7 +2475,8 @@ CONTAINS
 #ifdef W3_T
       WRITE (NDST,9030)
 #endif
-#if defined W3_COAWST_MODEL
+! cyy note: this coupling timing is currently disabled.
+#if defined W3_COAWST_MODEL__
 # if defined W3_AIR_WAVES || defined W3_WAVES_OCEAN
       ! IMOD is the grid number, ITIME is a bad counter. It steps for
       ! updates to the forcings. So we made a clean counter.
@@ -2938,12 +2939,18 @@ CONTAINS
       IDACT  = '         '
       OUTID  = '           '
       FLACT  = .FALSE.
-! cyy note: disable the coupling here, W3_COAWST_MODEL -> W3_COAWST_MODEL__      
-#if defined W3_COAWST_MODEL__
+! cyy note: since COAWST_CPL will always calls W3ULEV / W3UICE / W3UIC1
+!           it is likely that COAWST_CPL called before writing restart (post-coupling states)
+!           will cause the duplicated calling of W3Uxxx for restart run.
+!           the updated timing is calling COAWST_CPL after writing restart file (pre-coupling states are saved)
+#if defined W3_COAWST_MODEL
 # if defined W3_AIR_WAVES || defined W3_WAVES_OCEAN
-      !  IMOD is the grid number, ITIME is a bad counter. It steps for 
-      !  updates to the forcings. So we made a clean counter.
-      IF ( (ITIME_COAWST.EQ.0) .OR. (.NOT.FLZERO) ) THEN
+      ! IMOD is the grid number, ITIME is a bad counter. It steps for 
+      ! updates to the forcings. So we made a clean counter.
+      ! cyy note: since COAWST_CPL(0) is called in ww3_shel, the IF-Condition is changed to prevent calling COAWST_CPL for zero
+      ! time-step loop (IT0, NT = 0)
+      !IF ( (ITIME_COAWST.EQ.0) .OR. (.NOT.FLZERO) ) THEN
+      IF ( (ITIME_COAWST.GT.0) .AND. (.NOT.FLZERO) ) THEN
         IF (IMOD.eq.Nwav_grids) THEN
           CALL COAWST_CPL (ITIME_COAWST)
         END IF

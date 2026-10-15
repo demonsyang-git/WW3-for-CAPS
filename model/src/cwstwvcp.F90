@@ -108,6 +108,7 @@
       INTEGER   io, iw, ia, offset, run_couple
 !
       LOGICAL   :: FLFRST
+!
 ! cyy note: Re-organizing the sending/receiving order
 ! The updated order:
 ! CALL WAVFATM_COUPLING
@@ -117,8 +118,7 @@
 ! CALL W3UIC1
 ! CALL W3OUTG_COAWST
 ! CALL WAV2ATM_COUPLING
-! CALL WAV2OCN_COUPLING
-!           
+! CALL WAV2OCN_COUPLING           
 !
 !     Call to get data from atm model.
       DO iw=1,Nwav_grids
@@ -151,8 +151,8 @@
             CALL W3SETW ( iw, MDSE, MDST )
             CALL WAVFOCN_COUPLING (iw, io)
             CALL W3ULEV ( VA, VA )
-	    CALL W3UICE ( VA )
-	    CALL W3UIC1 ( FLFRST ) 
+            CALL W3UICE ( VA )
+            CALL W3UIC1 ( FLFRST ) 
           ELSE
             GOTO 50
           END IF
@@ -1065,6 +1065,7 @@
 !-------------------------------------------------------------------
 !  Tauocx:  Stress in east direction
 !  cyy note: this is COAWST added variable, which is already in N/m2
+!            and this is only for guard BULK_FLUXES && WAV2OCN_FLUXES
 !
 !  Fill wet parts of array SND_BUF that is NXxNY length.
 !  The local variable is only 1:NSEAL(M) long.
@@ -1099,6 +1100,7 @@
 !-------------------------------------------------------------------
 !  Tauocy: Ustar in north direction
 !  cyy note: this is COAWST added variable, which is already in N/m2
+!            and this is only for guard BULK_FLUXES && WAV2OCN_FLUXES
 !
 !  Fill wet parts of array SND_BUF that is NXxNY length.
 !  The local variable is only 1:NSEAL(M) long.
